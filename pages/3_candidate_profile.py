@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from datetime import datetime
 import json
 import traceback
+from layout import render_sidebar
 
 # -------------------------------------------------
 # ENV + CONFIG
@@ -13,11 +14,12 @@ import traceback
 load_dotenv()
 
 API_BASE = os.getenv("API_BASE_URL", "http://localhost:8000")
-S3_BUCKET = os.getenv("AWS_S3_BUCKET", "candidate-profile-assets")
+S3_BUCKET = os.getenv("S3_BUCKET_NAME", "candidate-profile-assets")
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 
 st.set_page_config(page_title="Candidate Profile", layout="wide", page_icon="👤")
 require_login()
+render_sidebar()
 role = st.session_state.get("role")
 
 if role != "user":
@@ -188,11 +190,13 @@ col1, col2, col3 = st.columns([1, 2, 1])
 with col1:
     if isinstance(profile, dict) and profile.get("profile_picture"):
         profile_pic = profile.get("profile_picture", "")
-        if profile_pic.startswith("http"):
-            image_url = profile_pic
-        else:
-            image_url = f"https://{S3_BUCKET}.s3.{AWS_REGION}.amazonaws.com/{profile_pic.lstrip('/')}"
-        st.image(image_url, width=150)
+        if profile_pic:
+            image_url = (
+                profile_pic
+                if profile_pic.startswith("http")
+                else f"https://{S3_BUCKET}.s3.amazonaws.com/{profile_pic}"
+            )
+            st.image(image_url, width=150)
     else:
         st.image("https://via.placeholder.com/150", width=150)
     
@@ -392,14 +396,16 @@ if st.session_state.edit_basic_info:
 
     profile_summary = st.text_area(
         "Profile Summary",
-        value=profile.get("profile_summary", ""),
+        value=profile.get("profile_summary") or "",  # ✅ FIX
         height=150,
         max_chars=MAX_SUMMARY_CHARS,
         help=f"Maximum {MAX_SUMMARY_CHARS} characters",
         key="profile_summary_input"
     )
 
-    st.caption(f"{len(profile_summary)}/{MAX_SUMMARY_CHARS} characters")
+    # ✅ SAFE LENGTH CHECK
+    summary_len = len(profile_summary) if profile_summary else 0
+    st.caption(f"{summary_len}/{MAX_SUMMARY_CHARS} characters")
 
     col1, col2 = st.columns(2)
 
@@ -433,19 +439,30 @@ if st.session_state.edit_basic_info:
 # -------------------------------------------------
 # QUICK ACTIONS
 # -------------------------------------------------
-col1, col2, col3, col4 = st.columns(4)
+col1, col2 = st.columns(2)
+
 with col1:
-    if st.button("📄 Download Resume", use_container_width=True, key="download_resume"):
-        st.info("Resume download feature coming soon!")
-with col2:
     if st.button("👁️ Preview Profile", use_container_width=True, key="preview_profile"):
-        st.info("Profile preview feature coming soon!")
-with col3:
+        if profile.get("public_username"):
+            public_ui_url = (
+                f"http://localhost:8501/public_profile"
+                f"?username={profile['public_username']}"
+            )
+
+            st.markdown(
+                f"""
+                <a href="{public_ui_url}" target="_blank">
+                    🔗 <b>Open Public Profile</b>
+                </a>
+                """,
+                unsafe_allow_html=True
+            )
+        else:
+            st.warning("Public profile will be available after saving profile")
+with col2:
     if st.button("📊 View Analytics", use_container_width=True, key="view_analytics"):
         st.switch_page("pages/7_profile_analytics.py")
-with col4:
-    if st.button("🎯 Job Preferences", use_container_width=True, key="job_preferences"):
-        st.info("Job preferences feature coming soon!")
+
 
 st.divider()
 
@@ -588,6 +605,7 @@ else:
     # Save/Cancel buttons
     col1, col2 = st.columns(2)
     with col1:
+        st.info("ℹ️ Removing a skill requires clicking **Save Skills** to apply changes")
         if st.button("💾 Save Skills", key="save_skills", use_container_width=True):
             # Prepare data for API
             valid_skills = []
@@ -599,30 +617,21 @@ else:
                         "years_of_experience": skill["years_of_experience"]
                     })
             
-            if valid_skills:
-                try:
-                    res = requests.put(
-                        f"{API_BASE}/candidate/skills",
-                        json=valid_skills,
-                        headers=auth_headers(),
-                        timeout=10
-                    )
-                    if res.status_code == 200:
-                        st.success("Skills updated successfully ✅")
+            res = requests.put(
+                f"{API_BASE}/candidate/skills",
+                json=valid_skills,  # empty list allowed
+                headers=auth_headers(),
+                timeout=10
+            )
 
-                        # 🔥 HARD RESET
-                        st.session_state.edit_skills = False
-                        st.session_state.profile_loaded = False
-                        st.session_state.profile_data = None
-
-                        st.rerun()
-                    else:
-                        st.error(f"Failed to update skills: {res.text}")
-                except Exception as e:
-                    st.error(f"Error updating skills: {str(e)}")
+            if res.status_code == 200:
+                st.success("Skills updated successfully ✅")
+                st.session_state.edit_skills = False
+                st.session_state.profile_loaded = False
+                st.session_state.profile_data = None
+                st.rerun()
             else:
-                st.warning("No valid skills to save")
-                
+                st.error(f"Failed to update skills: {res.text}")
     with col2:
         if st.button("❌ Cancel", key="cancel_skills", use_container_width=True):
             st.session_state.edit_skills = False
@@ -640,25 +649,23 @@ if not st.session_state.edit_experience:
         for exp in experiences:
             if isinstance(exp, dict):
                 start_date = exp.get('start_date', '—')
-                end_date = exp.get('end_date', 'Present' if exp.get('is_current', False) else '—')
-                
+                end_date = exp.get('end_date', 'Present' if exp.get('is_current') else '—')
+
                 st.markdown(f"""
                 <div style='background:#f8f9fa;padding:16px;border-radius:8px;margin-bottom:12px;'>
-                    <h4 style='margin:0;color:#1a1a1a;'>{exp.get('role', 'N/A')}</h4>
-                    <p style='margin:4px 0;color:#666;font-weight:600;'>{exp.get('company_name', 'N/A')}</p>
-                    <p style='margin:4px 0;color:#888;font-size:14px;'>
-                        {start_date} to {end_date}
-                    </p>
-                    <p style='margin:8px 0 0 0;color:#444;'>{exp.get('description', '')}</p>
+                    <h4 style='margin:0'>{exp.get("role", "")}</h4>
+                    <b>{exp.get("company_name", "")}</b><br>
+                    <small>{start_date} to {end_date}</small>
+                    <p>{exp.get("description") or ""}</p>
                 </div>
                 """, unsafe_allow_html=True)
     else:
-        st.info("💡 Add your work experience to showcase your professional journey")
-    
-    if st.button("✏️ Edit Experience", key="edit_exp_btn_main"):
+        st.info("Add your work experience")
+
+    if st.button("✏️ Edit Experience"):
         exp_list = []
 
-        if experiences and isinstance(experiences, list):
+        if experiences:
             for e in experiences:
                 exp_list.append({
                     "id": e.get("id"),
@@ -670,7 +677,6 @@ if not st.session_state.edit_experience:
                     "description": e.get("description", ""),
                 })
 
-        # ✅ IMPORTANT: always ensure at least one experience exists
         if not exp_list:
             exp_list.append({
                 "id": None,
@@ -685,86 +691,102 @@ if not st.session_state.edit_experience:
         st.session_state.experience_list = exp_list
         st.session_state.edit_experience = True
         st.rerun()
+
 else:
     st.markdown("### ✏️ Edit Experience")
 
-    # 👉 START FORM HERE (THIS IS THE KEY)
-    with st.form("experience_form"):
+    delete_exp_index = None
 
+    with st.form("experience_form"):
         for i, exp in enumerate(st.session_state.experience_list):
             with st.expander(
                 f"Experience {i + 1}: {exp.get('role', 'New Position')}",
                 expanded=(i == 0)
             ):
-                # Job Title
                 st.session_state.experience_list[i]["role"] = st.text_input(
                     "Job Title",
-                    value=exp.get("role", ""),
+                    exp.get("role", ""),
                     max_chars=100,
+                    help="Maximum 100 characters",
                     key=f"exp_role_{i}"
                 )
 
-                # Company Name
                 st.session_state.experience_list[i]["company_name"] = st.text_input(
                     "Company Name",
-                    value=exp.get("company_name", ""),
+                    exp.get("company_name", ""),
                     max_chars=100,
+                    help="Maximum 100 characters",
                     key=f"exp_company_{i}"
                 )
 
                 col1, col2 = st.columns(2)
 
                 with col1:
-                    start_date = exp.get("start_date")
-                    start_date_value = (
-                        datetime.fromisoformat(start_date).date()
-                        if start_date else datetime.today().date()
-                    )
+                    sd = exp.get("start_date")
                     st.session_state.experience_list[i]["start_date"] = str(
-                        st.date_input("Start Date", start_date_value, key=f"exp_start_{i}")
+                        st.date_input(
+                            "Start Date",
+                            datetime.fromisoformat(sd).date() if sd else datetime.today().date(),
+                            key=f"exp_start_{i}"
+                        )
                     )
 
                 with col2:
                     is_current = st.checkbox(
                         "Currently Working",
-                        value=exp.get("is_current", False),
+                        exp.get("is_current", False),
                         key=f"exp_current_{i}"
                     )
                     st.session_state.experience_list[i]["is_current"] = is_current
 
                     if not is_current:
-                        end_date = exp.get("end_date")
-                        end_date_value = (
-                            datetime.fromisoformat(end_date).date()
-                            if end_date else datetime.today().date()
-                        )
+                        ed = exp.get("end_date")
                         st.session_state.experience_list[i]["end_date"] = str(
-                            st.date_input("End Date", end_date_value, key=f"exp_end_{i}")
+                            st.date_input(
+                                "End Date",
+                                datetime.fromisoformat(ed).date() if ed else datetime.today().date(),
+                                key=f"exp_end_{i}"
+                            )
                         )
                     else:
                         st.session_state.experience_list[i]["end_date"] = None
 
-                # Description
-                MAX_EXP_DESC = 600
-
                 desc = st.text_area(
                     "Description",
-                    value=exp.get("description", ""),
+                    exp.get("description") or "",
+                    max_chars=600,
                     height=120,
-                    max_chars=MAX_EXP_DESC,
                     key=f"exp_desc_{i}"
                 )
 
-                st.caption(f"{len(desc)}/{MAX_EXP_DESC} characters")
-
                 st.session_state.experience_list[i]["description"] = desc
 
-        # ✅ THIS IS THE SAVE BUTTON (NOW IT WILL WORK)
-        submitted = st.form_submit_button("💾 Save Experience")
+                # 🗑️ DELETE EXPERIENCE (FORM SAFE)
+                if exp.get("id"):
+                    if st.form_submit_button("🗑️ Delete This Experience", key=f"del_exp_{i}"):
+                        delete_exp_index = i
 
-        if submitted:
-            saved_count = 0
+        save_clicked = st.form_submit_button("💾 Save Experience")
 
+        # ---------------- DELETE HANDLER ----------------
+        if delete_exp_index is not None:
+            exp = st.session_state.experience_list[delete_exp_index]
+
+            res = requests.delete(
+                f"{API_BASE}/candidate/experience/{exp['id']}",
+                headers=auth_headers()
+            )
+
+            if res.status_code == 204:
+                st.success("Experience deleted successfully ✅")
+                st.session_state.profile_loaded = False
+                st.session_state.edit_experience = False
+                st.rerun()
+            else:
+                st.error(res.text)
+
+        # ---------------- SAVE HANDLER ----------------
+        if save_clicked:
             for exp in st.session_state.experience_list:
                 if not exp.get("company_name") or not exp.get("role"):
                     continue
@@ -779,28 +801,26 @@ else:
                 }
 
                 if exp.get("id"):
-                    res = requests.put(
+                    requests.put(
                         f"{API_BASE}/candidate/experience/{exp['id']}",
                         json=payload,
                         headers=auth_headers(),
                     )
                 else:
-                    res = requests.post(
+                    requests.post(
                         f"{API_BASE}/candidate/experience",
                         json=payload,
                         headers=auth_headers(),
                     )
 
-                if res.status_code in (200, 201):
-                    saved_count += 1
-            
-            st.success(f"{saved_count} experience(s) saved ✅")
-            st.session_state.edit_experience = False
+            st.success("Experience saved successfully ✅")
             st.session_state.profile_loaded = False
+            st.session_state.edit_experience = False
             st.rerun()
+
     MAX_EXPERIENCES = 5
 
-    if st.button("➕ Add Another Experience", key="add_more_exp"):
+    if st.button("➕ Add Another Experience"):
         if len(st.session_state.experience_list) >= MAX_EXPERIENCES:
             st.error("❌ Maximum 5 experiences allowed")
         else:
@@ -814,6 +834,7 @@ else:
                 "description": "",
             })
             st.rerun()
+
 
 st.divider()
 
@@ -860,20 +881,20 @@ else:
                 e["institution"] = st.text_input(
                     "Institution", 
                     value=e.get("institution", ""), 
-                    max_chars=150,
+                    max_chars=100,
                     key=f"ei{i}"
                 )
                 e["degree"] = st.text_input(
                     "Degree", 
                     value=e.get("degree", ""), 
-                    max_chars=150,
+                    max_chars=100,
                     key=f"ed{i}"
                 )
             with col2:
                 e["field_of_study"] = st.text_input(
                     "Field of Study", 
                     value=e.get("field_of_study", ""),
-                    max_chars=150, 
+                    max_chars=100, 
                     key=f"efs{i}"
                 )
                 e["grade"] = st.text_input(
@@ -911,15 +932,28 @@ else:
                     key=f"ee{i}"
                 )
             
-            if st.button("❌ Remove", key=f"edl{i}"):
-                st.session_state.education_list.pop(i)
-                st.rerun()
+                if e.get("id"):
+                    col_del, col_spacer = st.columns([1, 4])
+                    with col_del:
+                        if st.button("🗑️ Delete", key=f"del_edu_{i}"):
+                            res = requests.delete(
+                                f"{API_BASE}/candidate/education/{e['id']}",
+                                headers=auth_headers()
+                            )
+
+                            if res.status_code == 204:
+                                st.success("Education deleted successfully ✅")
+                                st.session_state.profile_loaded = False
+                                st.session_state.edit_education = False
+                                st.rerun()
+                            else:
+                                st.error(res.text)
     
     MAX_EDUCATION = 5
 
     if st.button("➕ Add Education", key="add_education"):
         if len(st.session_state.education_list) >= MAX_EDUCATION:
-            st.error("❌ You can add only 3 education records")
+            st.error("❌ You can add only 5 education records")
         else:
             st.session_state.education_list.append({
                 "institution": "",
@@ -1006,7 +1040,7 @@ if not st.session_state.edit_projects:
             <div style='background:#f8f9fa;padding:16px;border-radius:8px;margin-bottom:12px;'>
                 <h4 style='margin:0;'>{p.get('title', 'N/A')}</h4>
                 <p style='margin:4px 0;'><b>Tech Stack:</b> {p.get('technologies_used', '—')}</p>
-                <p>{p.get('description', '')}</p>
+                <p>{p.get('description') or ''}</p>
                 {f"<a href='{p.get('project_url')}' target='_blank'>🔗 View Project</a>" if p.get('project_url') else ""}
             </div>
             """, unsafe_allow_html=True)
@@ -1044,6 +1078,7 @@ if not st.session_state.edit_projects:
 # ===============================
 else:
     st.markdown("### ✏️ Edit Projects")
+    delete_project_index = None
 
     with st.form("projects_form"):
         for i, proj in enumerate(st.session_state.project_list):
@@ -1051,10 +1086,13 @@ else:
                 f"Project {i + 1}: {proj.get('title') or 'New Project'}",
                 expanded=True
             ):
-                st.session_state.project_list[i]["title"] = st.text_input(
-                    "Project Title", proj.get("title", ""), key=f"proj_title_{i}"
+                st.session_state.project_list[i]["title"] =st.text_input(
+                    "Project Title",
+                    proj.get("title", ""),
+                    max_chars=150,
+                    help="Maximum 150 characters",
+                    key=f"proj_title_{i}"
                 )
-
                 MAX_TECH = 200
 
                 tech = st.text_input(
@@ -1067,27 +1105,55 @@ else:
                 st.session_state.project_list[i]["technologies_used"] = tech
 
 
-                st.session_state.project_list[i]["project_url"] = st.text_input(
-                    "Project URL (optional)", proj.get("project_url", ""), key=f"proj_url_{i}"
+                st.session_state.project_list[i]["project_url"] =st.text_input(
+                    "Project URL (optional)",
+                    proj.get("project_url", ""),
+                    max_chars=300,
+                    help="Maximum 300 characters",
+                    key=f"proj_url_{i}"
                 )
-
                 MAX_PROJECT_DESC = 500
 
                 desc = st.text_area(
                     "Description",
-                    proj.get("description", ""),
+                    proj.get("description") or "",
                     height=120,
                     max_chars=MAX_PROJECT_DESC,
                     key=f"proj_desc_{i}"
                 )
+                # 🗑️ DELETE PROJECT (FORM SAFE)
+                if proj.get("id"):
+                    if st.form_submit_button(
+                        "🗑️ Delete This Project",
+                        key=f"del_proj_{i}"
+                    ):
+                        delete_project_index = i
+                desc_len = len(desc) if desc else 0
+                st.caption(f"{desc_len}/{MAX_PROJECT_DESC} characters")
 
-                st.caption(f"{len(desc)}/{MAX_PROJECT_DESC} characters")
 
                 st.session_state.project_list[i]["description"] = desc
 
         submitted = st.form_submit_button("💾 Save Projects")
+        # ---------------- DELETE PROJECT HANDLER ----------------
+        if delete_project_index is not None:
+            proj = st.session_state.project_list[delete_project_index]
 
-        if submitted:
+            res = requests.delete(
+                f"{API_BASE}/candidate/projects/{proj['id']}",
+                headers=auth_headers(),
+            )
+
+            if res.status_code == 204:
+                st.success("Project deleted successfully ✅")
+                st.session_state.profile_loaded = False
+                st.session_state.edit_projects = False
+                st.rerun()
+                st.stop()
+            else:
+                st.error(res.text)
+
+        if submitted and delete_project_index is None:
             count = 0
             for proj in st.session_state.project_list:
                 if not proj["title"]:
