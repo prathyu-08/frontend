@@ -1,29 +1,41 @@
 import streamlit as st
 import requests
-from auth import require_login, require_role, auth_headers
+
+from auth import require_role, auth_headers
 from layout import render_sidebar
 
+# =================================================
+# CONFIG
+# ==================================================
 API_BASE = "http://localhost:8000"
-def safe_error_message(res):
-    try:
-        data = res.json()
-        if isinstance(data, dict):
-            return data.get("detail", str(data))
-        return str(data)
-    except Exception:
-        return res.text or f"HTTP {res.status_code}"
 
 
+
+st.session_state.setdefault("applied_jobs", set())
+# ==================================================
+# PAGE SETUP
+# ==================================================
 st.set_page_config(page_title="Job Listings", layout="wide")
-require_login()
+require_role("user")
 render_sidebar()
-
-
 
 st.title("💼 Job Opportunities")
 st.caption("Search and apply for jobs")
 
-# ---------------- FILTERS ----------------
+
+
+# ---------------- SUCCESS MESSAGE ----------------
+if st.session_state.get("application_success"):
+    st.success("🎉 Application submitted successfully!")
+    st.session_state.application_success = False
+# ==================================================
+# SESSION STATE
+# ==================================================
+st.session_state.setdefault("apply_job_id", None)
+
+# ==================================================
+# FILTERS
+# ==================================================
 col1, col2, col3 = st.columns(3)
 
 with col1:
@@ -37,6 +49,9 @@ with col3:
         "💼 Min Experience", 0.0, 50.0, 0.0, 0.5
     )
 
+# ==================================================
+# FETCH JOBS
+# ==================================================
 def fetch_jobs():
     params = {}
     if keyword:
@@ -47,11 +62,10 @@ def fetch_jobs():
         params["min_experience"] = min_experience
 
     res = requests.get(
-    f"{API_BASE}/jobs/search",
-    headers=auth_headers(),
-    params=params,
-)
-
+        f"{API_BASE}/jobs/search",
+        headers=auth_headers(),
+        params=params,
+    )
 
     if res.status_code != 200:
         st.error("Failed to load jobs")
@@ -66,15 +80,20 @@ if not jobs:
     st.info("No jobs found")
     st.stop()
 
-# ---------------- JOB LIST ----------------
+# ==================================================
+# JOB LISTINGS
+# ==================================================
 for job in jobs:
+    job_id = job["job_id"]
+
     with st.container():
+        # ---------------- JOB CARD ----------------
         st.markdown(
             f"""
             <div style="border:1px solid #ddd;padding:16px;border-radius:10px;">
                 <h4>{job['title']}</h4>
                 <p><b>{job['company_name']}</b></p>
-                <p>📍 {job.get('location')}</p>
+                <p>📍 {job.get('location', 'N/A')}</p>
                 <p>💼 {job.get('min_experience')} – {job.get('max_experience')} yrs</p>
                 <p>💰 ₹{job.get('salary_min')} – ₹{job.get('salary_max')} LPA</p>
             </div>
@@ -82,16 +101,31 @@ for job in jobs:
             unsafe_allow_html=True,
         )
 
-        if st.button("📩 Apply", key=f"apply_{job['job_id']}"):
-            res = requests.post(
-                f"{API_BASE}/applications/apply",
+        # ---------------- JOB DESCRIPTION (TEXT) ----------------
+        if job.get("description"):
+            description_text = job["description"].strip()
+            if description_text:
+                with st.expander("📄 Job Description (Text)"):
+                    st.write(description_text)
+
+        # ---------------- JOB DESCRIPTION (PDF) ----------------
+        if job.get("description_file_key"):
+            jd_res = requests.get(
+                f"{API_BASE}/job-descriptions/file/{job['description_file_key']}",
                 headers=auth_headers(),
-                params={"job_id": job["job_id"]},
             )
 
-            if res.status_code == 200:
-                st.success("Applied successfully ✅")
-            else:
-                st.error(res.json().get("detail", res.text))
+            if jd_res.status_code == 200:
+                st.link_button(
+                    "📄 View Job Description (PDF)",
+                    jd_res.json()["url"],
+                )
+
+        if job_id in st.session_state.applied_jobs:
+            st.button("✅ Applied", disabled=True, key=f"applied_{job_id}")
+        else:
+            if st.button("📩 Apply", key=f"apply_{job_id}"):
+                st.session_state.apply_job_id = job_id
+                st.switch_page("pages/job_application_form.py")
 
         st.divider()
