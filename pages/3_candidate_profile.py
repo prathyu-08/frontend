@@ -4,6 +4,7 @@ from auth import require_login, auth_headers
 import os
 from dotenv import load_dotenv
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
 import json
 import traceback
 from layout import render_sidebar
@@ -24,13 +25,6 @@ role = st.session_state.get("role")
 
 if role != "user":
     st.error("❌ Candidate profile is only for candidates.")
-    st.stop()
-# -------------------------------------------------
-# LOGOUT BUTTON
-# -------------------------------------------------
-if st.button("🚪 Logout"):
-    st.session_state.clear()
-    st.rerun()
     st.stop()
 
 # -------------------------------------------------
@@ -67,6 +61,36 @@ if "profile_pic_uploader_key" not in st.session_state:
     st.session_state.profile_pic_uploader_key = 0
 
 
+def format_date(value):
+    if not value:
+        return ""
+    try:
+        dt = datetime.fromisoformat(value)
+        return dt.strftime("%d %b %Y")
+    except Exception:
+        return str(value)
+
+
+def completion_percentage(completion):
+    if isinstance(completion, dict):
+        pct = completion.get("percentage", 0)
+    else:
+        pct = completion
+    try:
+        return int(pct)
+    except Exception:
+        return 0
+
+
+def parse_date(value, default_date):
+    if not value:
+        return default_date
+    try:
+        return datetime.fromisoformat(value).date()
+    except Exception:
+        return default_date
+
+
 
 
 
@@ -76,20 +100,43 @@ if "profile_pic_uploader_key" not in st.session_state:
 def fetch_profile_data(user_id: str, token: str):
     headers = {"Authorization": f"Bearer {token}"}
 
-    def safe_get(url, default=None):
-        res = requests.get(url, headers=headers, timeout=10)
+    def safe_get(session, url, default=None):
+        try:
+            res = session.get(url, headers=headers, timeout=10)
+        except Exception:
+            return default
         if res.status_code != 200:
             return default
         return res.json()
 
-    profile = safe_get(f"{API_BASE}/candidate/profile")
-    completion = safe_get(f"{API_BASE}/candidate/profile-completion")
-    educations = safe_get(f"{API_BASE}/candidate/education")
-    experiences = safe_get(f"{API_BASE}/candidate/experience")
-    skills = safe_get(f"{API_BASE}/candidate/skills")
-    projects = safe_get(f"{API_BASE}/candidate/projects")
+    endpoints = {
+        "profile": (f"{API_BASE}/candidate/profile", {}),
+        "completion": (f"{API_BASE}/candidate/profile-completion", {}),
+        "educations": (f"{API_BASE}/candidate/education", []),
+        "experiences": (f"{API_BASE}/candidate/experience", []),
+        "skills": (f"{API_BASE}/candidate/skills", []),
+        "projects": (f"{API_BASE}/candidate/projects", []),
+    }
 
-    return profile, completion, educations, experiences, skills, projects
+    results = {}
+    with requests.Session() as session:
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            future_map = {
+                executor.submit(safe_get, session, url, default): name
+                for name, (url, default) in endpoints.items()
+            }
+            for future in future_map:
+                name = future_map[future]
+                results[name] = future.result()
+
+    return (
+        results.get("profile", {}),
+        results.get("completion", {}),
+        results.get("educations", []),
+        results.get("experiences", []),
+        results.get("skills", []),
+        results.get("projects", []),
+    )
 
 
 
@@ -319,7 +366,11 @@ with col2:
 
 with col3:
     # Profile completion score
-    completion_pct = completion.get('percentage', 0) if isinstance(completion, dict) else 0
+    completion_pct = completion_percentage(completion)
+    if completion_pct < 0:
+        completion_pct = 0
+    if completion_pct > 100:
+        completion_pct = 100
     st.metric("Profile Strength", f"{completion_pct}%")
     st.progress(float(completion_pct) / 100 if completion_pct else 0)
     
@@ -648,8 +699,13 @@ if not st.session_state.edit_experience:
     if experiences and isinstance(experiences, list):
         for exp in experiences:
             if isinstance(exp, dict):
-                start_date = exp.get('start_date', '—')
-                end_date = exp.get('end_date', 'Present' if exp.get('is_current') else '—')
+                is_current = bool(exp.get("is_current"))
+                start_date = format_date(exp.get("start_date"))
+                end_date = "Present" if is_current else format_date(exp.get("end_date"))
+                if not start_date:
+                    start_date = "-"
+                if not end_date:
+                    end_date = "-"
 
                 st.markdown(f"""
                 <div style='background:#f8f9fa;padding:16px;border-radius:8px;margin-bottom:12px;'>
@@ -662,7 +718,8 @@ if not st.session_state.edit_experience:
     else:
         st.info("Add your work experience")
 
-    if st.button("✏️ Edit Experience"):
+    experience_button_label = "Add Experience" if not experiences else "Edit Experience"
+    if st.button(experience_button_label):
         exp_list = []
 
         if experiences:
@@ -726,7 +783,7 @@ else:
                     st.session_state.experience_list[i]["start_date"] = str(
                         st.date_input(
                             "Start Date",
-                            datetime.fromisoformat(sd).date() if sd else datetime.today().date(),
+                            parse_date(sd, datetime.today().date()),
                             key=f"exp_start_{i}"
                         )
                     )
@@ -744,12 +801,13 @@ else:
                         st.session_state.experience_list[i]["end_date"] = str(
                             st.date_input(
                                 "End Date",
-                                datetime.fromisoformat(ed).date() if ed else datetime.today().date(),
+                                parse_date(ed, datetime.today().date()),
                                 key=f"exp_end_{i}"
                             )
                         )
                     else:
                         st.session_state.experience_list[i]["end_date"] = None
+                        st.caption("End date is ignored when currently working is checked.")
 
                 desc = st.text_area(
                     "Description",
@@ -1017,7 +1075,7 @@ else:
             st.session_state.edit_education = False
             st.rerun()
 
-st.divider()
+
 
 
 
@@ -1206,7 +1264,6 @@ else:
 st.divider()
 
 # Add a refresh button at the bottom
-st.divider()
 if st.button("🔄 Refresh Profile Data", key="refresh_profile"):
     st.session_state.profile_loaded = False
     st.rerun()

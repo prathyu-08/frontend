@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from auth import require_login, auth_headers
 import os
 from dotenv import load_dotenv
-from layout import render_sidebar
+
 # -------------------------------------------------
 # CONFIG
 # -------------------------------------------------
@@ -21,7 +21,7 @@ st.set_page_config(
 # AUTH
 # -------------------------------------------------
 require_login()
-render_sidebar()
+
 role = st.session_state.get("role")
 if role != "user":
     st.error("❌ Analytics is only available for candidates.")
@@ -72,7 +72,6 @@ st.subheader("🧩 Application Status Breakdown")
 
 status_map = {
     "applied": "Applied",
-    "viewed": "Viewed",
     "shortlisted": "Shortlisted",
     "interview": "Interview",
     "offered": "Offered",
