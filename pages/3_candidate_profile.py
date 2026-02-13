@@ -213,7 +213,19 @@ st.markdown("""
         border: 1px solid #ddd;
     }
     .stButton > button {
-        border-radius: 8px !important;
+        border-radius: 10px !important;
+        background: linear-gradient(135deg, #3b82f6, #2563eb) !important;
+        color: #ffffff !important;
+        font-weight: 600 !important;
+        border: none !important;
+        padding: 10px 18px !important;
+        box-shadow: 0 8px 20px rgba(37, 99, 235, 0.35);
+        transition: all 0.2s ease-in-out;
+    }
+    .stButton > button:hover {
+        background: linear-gradient(135deg, #2563eb, #1e40af) !important;
+        transform: translateY(-1px);
+        box-shadow: 0 12px 28px rgba(37, 99, 235, 0.45);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -379,43 +391,7 @@ with col3:
         for m in completion.get("missing_sections", []):
             st.write(f"• {m}")
     
-    # Profile visibility toggle
-    if st.button("🔒 Profile Visibility Settings", key="visibility_btn", use_container_width=True):
-        st.session_state.show_profile_visibility = not st.session_state.show_profile_visibility
 
-if st.session_state.show_profile_visibility:
-    with st.expander("🔒 Profile Visibility", expanded=True):
-        visibility_options = ["public", "private", "recruiter_only"]
-        current_visibility = profile.get("visibility", "public") if isinstance(profile, dict) else "public"
-        try:
-            current_index = visibility_options.index(current_visibility)
-        except ValueError:
-            current_index = 0
-        
-        visibility = st.radio(
-            "Who can see your profile?",
-            visibility_options,
-            index=current_index,
-            horizontal=True,
-            key="visibility_radio"
-        )
-        
-        if st.button("Save Visibility", key="save_visibility"):
-            try:
-                res = requests.put(
-                    f"{API_BASE}/candidate/profile",
-                    json={"visibility": visibility},
-                    headers=auth_headers(),
-                    timeout=10
-                )
-                if res.status_code == 200:
-                    st.success("Visibility updated!")
-                    st.session_state.profile_loaded = False
-                    st.rerun()
-                else:
-                    st.error("Failed to update visibility")
-            except Exception as e:
-                st.error(f"Error updating visibility: {str(e)}")
 
 st.divider()
 # -------------------------------------------------
