@@ -7,7 +7,10 @@ from dotenv import load_dotenv
 # CONFIG
 # --------------------------------------------------
 load_dotenv()
-st.set_page_config(page_title="Create Account", layout="wide")
+st.set_page_config(
+    page_title="Create Account | NMK Recruitment Portal",
+    layout="wide"
+)
 
 AWS_REGION = os.getenv("AWS_REGION")
 COGNITO_CLIENT_ID = os.getenv("COGNITO_CLIENT_ID")
@@ -41,40 +44,102 @@ for k, v in defaults.items():
 st.markdown(
     """
     <style>
-    .block-container {
-        max-width: 1200px;
-        padding-top: 2.5rem;
-    }
+        .block-container {
+            max-width: 1200px;
+            padding-top: 2.5rem;
+        }
+
+        /* ===============================
+           CREATE ACCOUNT (FORM SUBMIT)
+           =============================== */
+        div[data-testid="stFormSubmitButton"] > button {
+            background: linear-gradient(135deg, #2563eb, #1e40af) !important;
+            color: #ffffff !important;
+            border-radius: 12px !important;
+            height: 48px !important;
+            font-size: 16px !important;
+            font-weight: 600 !important;
+            border: none !important;
+            width: 100% !important;
+            box-shadow: 0 10px 25px rgba(37, 99, 235, 0.35) !important;
+            transition: all 0.25s ease-in-out !important;
+        }
+
+        div[data-testid="stFormSubmitButton"] > button:hover {
+            background: linear-gradient(135deg, #1d4ed8, #1e3a8a) !important;
+            transform: translateY(-2px);
+            box-shadow: 0 14px 32px rgba(37, 99, 235, 0.45) !important;
+        }
+
+        /* ===============================
+           VERIFY EMAIL BUTTON
+           =============================== */
+        div[data-testid="stForm"] div.stButton > button {
+            background: linear-gradient(135deg, #22c55e, #15803d) !important;
+            color: white !important;
+            border-radius: 12px !important;
+            height: 46px !important;
+            font-weight: 600 !important;
+            border: none !important;
+            box-shadow: 0 8px 20px rgba(22, 163, 74, 0.35) !important;
+        }
+
+        div[data-testid="stForm"] div.stButton > button:hover {
+            background: linear-gradient(135deg, #16a34a, #14532d) !important;
+            transform: translateY(-1px);
+        }
+
+        /* ===============================
+           BACK TO LOGIN (SECONDARY)
+           =============================== */
+        button[kind="secondary"] {
+            background: linear-gradient(135deg, #0f172a, #020617) !important;
+            color: #f9fafb !important;
+            border-radius: 12px !important;
+            height: 44px !important;
+            font-weight: 500 !important;
+            border: none !important;
+            box-shadow: 0 8px 18px rgba(15, 23, 42, 0.4) !important;
+        }
+
+        button[kind="secondary"]:hover {
+            background: linear-gradient(135deg, #020617, #000000) !important;
+            transform: translateY(-1px);
+        }
     </style>
     """,
     unsafe_allow_html=True,
 )
+
+
+
+
 # --------------------------------------------------
 # LOGO
 # --------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOGO_PATH = os.path.join(BASE_DIR, "assets", "nmk_logo.png")
 
+col_logo, col_space = st.columns([2, 8])
 
-col1, col2, col3 = st.columns([1, 2, 1])
-
-with col2:
+with col_logo:
     if os.path.exists(LOGO_PATH):
-        st.image(LOGO_PATH, width=400)
+        st.image(LOGO_PATH, width=260)
     elif os.path.exists(os.path.join("assets", "nmk_logo.png")):
-        st.image(os.path.join("assets", "nmk_logo.png"), width=400)
+        st.image(os.path.join("assets", "nmk_logo.png"), width=260)
     else:
-        st.warning("Logo not found")
-        
+        st.warning("NMK logo not found")
+
 # --------------------------------------------------
 # TITLE
 # --------------------------------------------------
 st.markdown(
-    "<h1 style='text-align:center;'>Create Account</h1>",
+    "<h1 style='text-align:center; margin-top: 1rem;'>NMK Recruitment Portal</h1>",
     unsafe_allow_html=True,
 )
+
 st.markdown(
-    "<p style='text-align:center;color:#666;'>Join NMK Recruitment Portal</p>",
+    "<h3 style='text-align:center; color:#555; font-weight:500;'>Create Account</h3>",
     unsafe_allow_html=True,
 )
 
@@ -82,12 +147,12 @@ st.markdown(
 # SUCCESS MESSAGES
 # --------------------------------------------------
 if st.session_state.signup_success:
-    st.success("🎉 Account created successfully!")
-    st.info("Please check your email for the verification code.")
+    st.success("🎉 Account created successfully on NMK Recruitment Portal")
+    st.info("Please check your registered email for the verification code.")
 
 if st.session_state.verify_success:
-    st.success("✅ Email verified successfully!")
-    st.info("You can now login.")
+    st.success("✅ Email verified successfully")
+    st.info("You can now login to NMK Recruitment Portal.")
 
 # --------------------------------------------------
 # SIGNUP FORM
@@ -97,11 +162,17 @@ role = st.selectbox(
     ["user", "recruiter"],
     key="signup_role",
 )
-
+if role == "recruiter":
+    st.info(
+        "ℹ️ **Recruiter Registration Notice**\n\n"
+        "If you are signing up as a recruiter, you must use your official "
+        "**@nmkglobalinc.com** email address.\n\n"
+        "Example: **example@nmkglobalinc.com**"
+    )
 with st.form("signup_form"):
     full_name = st.text_input("Full Name *", key="signup_full_name")
     email = st.text_input("Email Address *", key="signup_email")
-    phone = st.text_input("Phone (+91XXXXXXXXXX)", key="signup_phone")
+    phone = st.text_input("Phone Number (+91XXXXXXXXXX)", key="signup_phone")
     password = st.text_input("Password *", type="password", key="signup_password")
 
     # Recruiter-only fields
@@ -117,7 +188,7 @@ with st.form("signup_form"):
         location = st.text_input("Company Location *", key="signup_location")
         designation = st.text_input("Your Designation *", key="signup_designation")
 
-    submit = st.form_submit_button("Create Account", use_container_width=True)
+    submit = st.form_submit_button("Create Account", use_container_width=True,)
 
 # --------------------------------------------------
 # SIGNUP HANDLER
@@ -133,7 +204,7 @@ if submit:
             st.stop()
 
         if not company_name or not industry or not location or not designation:
-            st.error("Please fill all recruiter mandatory fields")
+            st.error("Please fill all mandatory recruiter fields")
             st.stop()
 
     try:
@@ -157,11 +228,10 @@ if submit:
         st.session_state.signup_success = True
         st.session_state.show_verify = True
         st.session_state.verify_success = False
-
         st.rerun()
 
     except cognito.exceptions.UsernameExistsException:
-        st.warning("⚠️ Account already exists. Please verify or login.")
+        st.warning("⚠️ Account already exists. Please verify your email or login.")
     except Exception as e:
         st.error(str(e))
 
@@ -192,7 +262,6 @@ if st.session_state.show_verify:
             st.session_state.verify_success = True
             st.session_state.show_verify = False
             st.session_state.signup_success = False
-
             st.rerun()
 
         except Exception as e:
@@ -202,5 +271,5 @@ if st.session_state.show_verify:
 # BACK TO LOGIN
 # --------------------------------------------------
 st.write("")
-if st.button("← Back to Login", use_container_width=True):
+if st.button("← Back to Login", use_container_width=True, type="secondary"):
     st.switch_page("pages/login.py")
