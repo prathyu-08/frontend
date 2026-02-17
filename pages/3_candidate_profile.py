@@ -196,14 +196,16 @@ st.markdown("""
         box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         margin-bottom: 20px;
     }
+
     .section-header {
         font-size: 20px;
         font-weight: 600;
         color: #1a1a1a;
         margin-bottom: 16px;
-        border-bottom: 2px solid #4A90E2;
+        border-bottom: 2px solid #e5e7eb;
         padding-bottom: 8px;
     }
+
     .skill-badge {
         padding: 6px 12px;
         border-radius: 16px;
@@ -212,32 +214,45 @@ st.markdown("""
         color: #333;
         border: 1px solid #ddd;
     }
+
+    /* ===============================
+       Professional Button Style
+       =============================== */
     .stButton > button {
-        border-radius: 10px !important;
-        background: linear-gradient(135deg, #3b82f6, #2563eb) !important;
-        color: #ffffff !important;
+        border-radius: 8px !important;
         font-weight: 600 !important;
-        border: none !important;
         padding: 10px 18px !important;
-        box-shadow: 0 8px 20px rgba(37, 99, 235, 0.35);
-        transition: all 0.2s ease-in-out;
+
+        background-color: #ffffff !important;
+        color: #111827 !important;
+        border: 1px solid #d1d5db !important;
+
+        box-shadow: none !important;
+        transition: all 0.18s ease-in-out !important;
     }
+
     .stButton > button:hover {
-        background: linear-gradient(135deg, #2563eb, #1e40af) !important;
+        background-color: #f9fafb !important;
+        border-color: #9ca3af !important;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.06) !important;
         transform: translateY(-1px);
-        box-shadow: 0 12px 28px rgba(37, 99, 235, 0.45);
     }
+
+    .stButton > button:focus,
+    .stButton > button:active {
+        outline: none !important;
+        box-shadow: none !important;
+    }
+
+    /* Hide streamlit file uploader 200MB text */
+    [data-testid="stFileUploader"] small {
+        display: none !important;
+    }
+
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("""
-<style>
-/* Hide streamlit file uploader 200MB text */
-[data-testid="stFileUploader"] small {
-    display: none !important;
-}
-</style>
-""", unsafe_allow_html=True)
+
 
 # -------------------------------------------------
 # HEADER WITH PROFILE PICTURE
@@ -543,41 +558,41 @@ if not st.session_state.edit_skills:
         st.info("Add skills to your profile")
 
     
-    if st.button("✏️ Edit Skills", key="edit_skills_btn_main"):
-        # Initialize skills list
-        if skills and isinstance(skills, list):
-            skill_list = []
-            for s in skills:
-                if isinstance(s, dict):
-                    skill_data = {
-                        "name": s.get('skill', {}).get('name', '') if 'skill' in s else s.get('name', ''),
-                        "proficiency": s.get('proficiency', 'Beginner'),
-                        "years_of_experience": s.get('years_of_experience', 0),
-                    }
-                    if skill_data["name"]:  # Only add if name exists
-                        skill_list.append(skill_data)
-            st.session_state.candidate_skills = skill_list
-        else:
-            st.session_state.candidate_skills = []
-        
-        st.session_state.edit_skills = True
-        st.rerun()
+if st.button("✏️ Edit Skills", key="edit_skills_btn_main"):
+
+    skill_list = []
+
+    if skills and isinstance(skills, list):
+        for s in skills:
+            skill_list.append({
+                "id": s.get("id"),  # ✅ CandidateSkill.id
+                "name": s.get("skill", {}).get("name", ""),
+                "proficiency": s.get("proficiency", "Beginner"),
+                "years_of_experience": s.get("years_of_experience", 0),
+            })
+
+    st.session_state.candidate_skills = skill_list
+    st.session_state.edit_skills = True
+    st.rerun()
+
 else:
     # EDIT SKILLS MODE
     st.markdown("### ✏️ Edit Skills")
-    
+
+    delete_index = None
+
     # Display existing skills for editing
     for i, s in enumerate(st.session_state.candidate_skills):
         col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
-        
+
         with col1:
             st.session_state.candidate_skills[i]["name"] = st.text_input(
-                "Skill", 
+                "Skill",
                 value=s.get("name", ""),
                 key=f"skill_name_{i}",
                 max_chars=50,
-                placeholder="e.g., Python, React, AWS"
             )
+
         with col2:
             st.session_state.candidate_skills[i]["proficiency"] = st.selectbox(
                 "Proficiency",
@@ -587,19 +602,39 @@ else:
                 ),
                 key=f"skill_prof_{i}"
             )
+
         with col3:
             st.session_state.candidate_skills[i]["years_of_experience"] = st.number_input(
-                "Years", 
-                0.0, 50.0, 
-                value=float(s.get("years_of_experience", 0.0)), 
+                "Years",
+                0.0, 50.0,
+                value=float(s.get("years_of_experience", 0.0)),
                 step=0.5,
                 key=f"skill_years_{i}"
             )
+
         with col4:
-            if st.button("❌", key=f"remove_skill_{i}"):
-                st.session_state.candidate_skills.pop(i)
-                st.rerun()
-    
+            if st.button("❌", key=f"remove_skill_{i}_{s.get('id')}"):
+                delete_index = i
+
+    # -------- HANDLE DELETE AFTER LOOP --------
+    if delete_index is not None:
+        skill = st.session_state.candidate_skills[delete_index]
+
+        if skill.get("id"):
+            res = requests.delete(
+                f"{API_BASE}/candidate/skills/{skill['id']}",
+                headers=auth_headers(),
+            )
+
+            if res.status_code not in (200, 204):
+                st.error("Failed to delete skill")
+                st.stop()
+
+        st.session_state.candidate_skills.pop(delete_index)
+
+        st.session_state.profile_loaded = False
+        st.rerun()
+  
     st.divider()
     
     # Add new skill
@@ -632,7 +667,6 @@ else:
     # Save/Cancel buttons
     col1, col2 = st.columns(2)
     with col1:
-        st.info("ℹ️ Removing a skill requires clicking **Save Skills** to apply changes")
         if st.button("💾 Save Skills", key="save_skills", use_container_width=True):
             # Prepare data for API
             valid_skills = []
