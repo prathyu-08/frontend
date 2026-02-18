@@ -9,9 +9,7 @@ import json
 import traceback
 from layout import render_sidebar
 
-# -------------------------------------------------
 # ENV + CONFIG
-# -------------------------------------------------
 load_dotenv()
 
 API_BASE = os.getenv("API_BASE_URL", "http://localhost:8000")
@@ -27,9 +25,7 @@ if role != "user":
     st.error("❌ Candidate profile is only for candidates.")
     st.stop()
 
-# -------------------------------------------------
 # SESSION STATES
-# -------------------------------------------------
 def init_session_states():
     default_states = {
         "edit_basic_info": False,
@@ -184,9 +180,8 @@ else:
     # Fallback to empty data
     profile, completion, educations, experiences, skills, projects = {}, {}, [], [], [], []
 
-# -------------------------------------------------
+
 # CUSTOM CSS
-# -------------------------------------------------
 st.markdown("""
 <style>
     .profile-card {
@@ -252,9 +247,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# -------------------------------------------------
 # HEADER WITH PROFILE PICTURE
-# -------------------------------------------------
 st.markdown("# 👤 My Profile")
 
 col1, col2, col3 = st.columns([1, 2, 1])
@@ -407,9 +400,7 @@ with col3:
 
 
 st.divider()
-# -------------------------------------------------
 # EDIT BASIC PROFILE INFO (ONLY 4 FIELDS)
-# -------------------------------------------------
 if st.session_state.edit_basic_info:
     st.markdown("### ✏️ Edit Profile")
 
@@ -506,9 +497,7 @@ with col2:
 
 st.divider()
 
-# -------------------------------------------------
 # PROFILE SUMMARY
-# -------------------------------------------------
 st.markdown('<div class="section-header">📝 Profile Summary</div>', unsafe_allow_html=True)
 
 if isinstance(profile, dict):
@@ -526,9 +515,7 @@ else:
 
 st.divider()
 
-# -------------------------------------------------
 # KEY SKILLS
-# -------------------------------------------------
 st.markdown('<div class="section-header">🛠️ Key Skills</div>', unsafe_allow_html=True)
 
 if not st.session_state.edit_skills:
@@ -679,9 +666,7 @@ else:
 
 st.divider()
 
-# -------------------------------------------------
 # EMPLOYMENT / EXPERIENCE
-# -------------------------------------------------
 st.markdown('<div class="section-header">💼 Employment</div>', unsafe_allow_html=True)
 
 if not st.session_state.edit_experience:
@@ -887,9 +872,7 @@ st.divider()
 
 
 
-# -------------------------------------------------
 # EDUCATION
-# -------------------------------------------------
 st.markdown('<div class="section-header">🎓 Education</div>', unsafe_allow_html=True)
 
 if not st.session_state.edit_education:
@@ -1068,18 +1051,12 @@ else:
 
 
 
-# -------------------------------------------------
-# PROJECTS SECTION (Similar pattern)
-# -------------------------------------------------
+
 st.divider()
-# -------------------------------------------------
 # PROJECTS
-# -------------------------------------------------
 st.markdown('<div class="section-header">📂 Projects</div>', unsafe_allow_html=True)
 
-# ===============================
 # VIEW MODE
-# ===============================
 if not st.session_state.edit_projects:
     if projects and isinstance(projects, list):
         for p in projects:
@@ -1120,9 +1097,7 @@ if not st.session_state.edit_projects:
         st.session_state.edit_projects = True
         st.rerun()
 
-# ===============================
 # EDIT MODE
-# ===============================
 else:
     st.markdown("### ✏️ Edit Projects")
     delete_project_index = None
@@ -1256,3 +1231,4 @@ st.divider()
 if st.button("🔄 Refresh Profile Data", key="refresh_profile"):
     st.session_state.profile_loaded = False
     st.rerun()
+
